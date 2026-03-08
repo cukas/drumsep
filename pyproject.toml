@@ -43,9 +43,9 @@ dev = [
 drumsep = "drumsep.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/nicklascukas/drumsep"
-Repository = "https://github.com/nicklascukas/drumsep"
-Issues = "https://github.com/nicklascukas/drumsep/issues"
+Homepage = "https://github.com/cukas/drumsep"
+Repository = "https://github.com/cukas/drumsep"
+Issues = "https://github.com/cukas/drumsep/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/drumsep"]
