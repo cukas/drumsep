@@ -12,15 +12,13 @@ and spectral gating.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Callable
+from typing import Optional, Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import gc
 import threading
 import time
 import warnings
-
-
 
 import numpy as np
 import librosa
@@ -32,7 +30,7 @@ from .types import SeparationResult, DrumSepError, CancellationError
 class DrumSeparator:
     """Separates a drums stem into kick, snare, hihat, cymbals, and toms."""
 
-    STEMS: List[str] = ["kick", "snare", "hihat", "cymbals", "toms"]
+    STEMS: list[str] = ["kick", "snare", "hihat", "cymbals", "toms"]
 
     def __init__(
         self,
@@ -43,7 +41,7 @@ class DrumSeparator:
         self.cancel_event = cancel_event
 
     @property
-    def stem_names(self) -> List[str]:
+    def stem_names(self) -> list[str]:
         return self.STEMS.copy()
 
     def separate(
@@ -145,7 +143,7 @@ class DrumSeparator:
             def _istft(name: str) -> tuple:
                 return (name, librosa.istft(stft_data[name], hop_length=512))
 
-            audio_results: Dict[str, np.ndarray] = {}
+            audio_results: dict[str, np.ndarray] = {}
             try:
                 with ThreadPoolExecutor(max_workers=5) as pool:
                     for name, audio in pool.map(_istft, self.STEMS):
@@ -204,18 +202,27 @@ class DrumSeparator:
 
         except CancellationError:
             raise
+        except FileNotFoundError:
+            raise
         except Exception as e:
             raise DrumSepError(f"Drum separation failed: {e}") from e
 
-    def _progress(self, callback, percent, message):
+    def _progress(
+        self,
+        callback: Optional[Callable[[int, str], None]],
+        percent: int,
+        message: str,
+    ) -> None:
         if callback:
             callback(percent, message)
 
-    def _check_cancelled(self):
+    def _check_cancelled(self) -> None:
         if self.cancel_event and self.cancel_event.is_set():
             raise CancellationError("Separation cancelled")
 
-    def _create_frequency_mask(self, freqs, low_hz, high_hz):
+    def _create_frequency_mask(
+        self, freqs: np.ndarray, low_hz: float, high_hz: float
+    ) -> np.ndarray:
         mask = ((freqs >= low_hz) & (freqs <= high_hz)).astype(float)
         transition = 20
         low_trans = (freqs >= low_hz - transition) & (freqs < low_hz)
@@ -224,7 +231,9 @@ class DrumSeparator:
         mask[high_trans] = 1 - (freqs[high_trans] - high_hz) / transition
         return mask[:, np.newaxis]
 
-    def _create_kick_mask(self, freqs, magnitude, sr, y_percussive):
+    def _create_kick_mask(
+        self, freqs: np.ndarray, magnitude: np.ndarray, sr: int | float, y_percussive: np.ndarray
+    ) -> np.ndarray:
         freq_mask = np.zeros_like(freqs, dtype=float)
         low_ramp = (freqs >= 0) & (freqs < 20)
         freq_mask[low_ramp] = freqs[low_ramp] / 20.0
@@ -265,7 +274,9 @@ class DrumSeparator:
 
         return freq_mask * gate_full
 
-    def _apply_spectral_gate(self, kick_stft, sr, gate_floor=0.3):
+    def _apply_spectral_gate(
+        self, kick_stft: np.ndarray, sr: int | float, gate_floor: float = 0.3
+    ) -> np.ndarray:
         magnitude = np.abs(kick_stft)
         frame_energy = np.sum(magnitude, axis=0)
         if frame_energy.max() == 0:
@@ -305,9 +316,12 @@ class DrumSeparator:
                     val = gate_floor + (1.0 - gate_floor) * decay
                     gate[idx] = max(gate[idx], val)
 
-        return kick_stft * gate[np.newaxis, :]
+        result: np.ndarray = kick_stft * gate[np.newaxis, :]
+        return result
 
-    def _create_hihat_mask(self, freqs, magnitude, sr, y):
+    def _create_hihat_mask(
+        self, freqs: np.ndarray, magnitude: np.ndarray, sr: int | float, y: np.ndarray
+    ) -> np.ndarray:
         freq_mask = self._create_frequency_mask(freqs, 6000, 12000)
 
         onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=512)
@@ -319,7 +333,9 @@ class DrumSeparator:
 
         return freq_mask * (0.3 + 0.7 * onset_mask)
 
-    def _restore_stereo(self, substems, original_stereo):
+    def _restore_stereo(
+        self, substems: dict[str, np.ndarray], original_stereo: np.ndarray
+    ) -> dict[str, np.ndarray]:
         stereo_substems = {}
         for name, mono_audio in substems.items():
             sample_len = min(1000, len(mono_audio), original_stereo.shape[1])

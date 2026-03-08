@@ -45,3 +45,21 @@ def test_cli_version():
     result = _run_cli("--version")
     assert result.returncode == 0
     assert "0.1.0" in result.stdout
+
+
+def test_cli_batch(drums_audio_path, tmp_path):
+    # Create a directory with audio files for batch processing
+    batch_input = tmp_path / "batch_input"
+    batch_input.mkdir()
+    batch_output = str(tmp_path / "batch_output")
+
+    # Copy the test drums file into the batch input directory
+    import shutil
+    shutil.copy2(drums_audio_path, str(batch_input / "track1.wav"))
+    shutil.copy2(drums_audio_path, str(batch_input / "track2.wav"))
+
+    result = _run_cli("batch", str(batch_input), "-o", batch_output)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert Path(batch_output, "track1", "kick.wav").exists()
+    assert Path(batch_output, "track2", "kick.wav").exists()
+    assert "2/2" in result.stdout

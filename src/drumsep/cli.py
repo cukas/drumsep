@@ -7,94 +7,88 @@ import json
 import sys
 from pathlib import Path
 
-_SUBCOMMANDS = {"analyze", "batch"}
-
 
 def main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-
-    # Handle --version before anything else
-    if "--version" in args:
-        from drumsep import __version__
-        print(f"drumsep {__version__}")
-        return 0
-
-    # Detect if first positional arg is a known subcommand
-    positional_args = [a for a in args if not a.startswith("-")]
-    if positional_args and positional_args[0] in _SUBCOMMANDS:
-        command = positional_args[0]
-    else:
-        command = None
-
-    if command == "analyze":
-        return _parse_and_run_analyze(args)
-    elif command == "batch":
-        return _parse_and_run_batch(args)
-    else:
-        return _parse_and_run_separate(args)
-
-
-def _parse_and_run_separate(args: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="drumsep",
         description="Separate drums into kick, snare, hi-hat, cymbals, and toms",
     )
-    parser.add_argument("input", nargs="?", help="Path to drums audio file")
-    parser.add_argument("-o", "--output", default="./stems", help="Output directory (default: ./stems)")
-    parser.add_argument("--bass", help="Bass stem path for kick debleeding")
-    parser.add_argument("--no-enhanced", action="store_true", help="Disable HPSS/transient enhancements")
-    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress output")
+    parser.add_argument(
+        "--version", action="store_true", help="Show version and exit"
+    )
 
-    parsed = parser.parse_args(args)
+    subparsers = parser.add_subparsers(dest="command")
 
-    if not parsed.input:
+    # Default: separate
+    sep_parser = subparsers.add_parser(
+        "separate", help="Separate drums into sub-stems"
+    )
+    sep_parser.add_argument("input", help="Path to drums audio file")
+    sep_parser.add_argument(
+        "-o", "--output", default="./stems", help="Output directory (default: ./stems)"
+    )
+    sep_parser.add_argument("--bass", help="Bass stem path for kick debleeding")
+    sep_parser.add_argument(
+        "--no-enhanced", action="store_true", help="Disable HPSS/transient enhancements"
+    )
+    sep_parser.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress progress output"
+    )
+
+    # Analyze subcommand
+    analyze_parser = subparsers.add_parser(
+        "analyze", help="Analyze a kick drum stem"
+    )
+    analyze_parser.add_argument("input", help="Path to kick drum audio file")
+
+    # Batch subcommand
+    batch_parser = subparsers.add_parser(
+        "batch", help="Process a folder of drum stems"
+    )
+    batch_parser.add_argument("input_dir", help="Directory containing drum audio files")
+    batch_parser.add_argument(
+        "-o", "--output", default="./batch_output", help="Output directory"
+    )
+    batch_parser.add_argument("--bass", help="Bass stem path for kick debleeding")
+    batch_parser.add_argument(
+        "--no-enhanced", action="store_true", help="Disable enhancements"
+    )
+
+    args_list = argv if argv is not None else sys.argv[1:]
+
+    # Handle --version before subparser dispatch
+    if "--version" in args_list:
+        from drumsep import __version__
+        print(f"drumsep {__version__}")
+        return 0
+
+    # If first positional arg is not a known subcommand, treat as "separate <file>"
+    known_commands = {"separate", "analyze", "batch"}
+    positional = [a for a in args_list if not a.startswith("-")]
+    if positional and positional[0] not in known_commands:
+        args_list = ["separate", *args_list]
+
+    if not args_list:
         parser.print_usage(sys.stderr)
         return 1
 
-    return _cmd_separate(parsed)
+    parsed = parser.parse_args(args_list)
+
+    if parsed.command == "analyze":
+        return _cmd_analyze(parsed)
+    elif parsed.command == "batch":
+        return _cmd_batch(parsed)
+    elif parsed.command == "separate":
+        return _cmd_separate(parsed)
+    else:
+        parser.print_usage(sys.stderr)
+        return 1
 
 
-def _parse_and_run_analyze(args: list[str]) -> int:
-    parser = argparse.ArgumentParser(
-        prog="drumsep analyze",
-        description="Analyze a kick drum stem",
-    )
-    parser.add_argument("input", help="Path to kick drum audio file")
-
-    # Remove the "analyze" token from args before parsing
-    filtered = [a for i, a in enumerate(args) if not (a == "analyze" and i == _first_positional_index(args))]
-    parsed = parser.parse_args(filtered)
-    return _cmd_analyze(parsed)
-
-
-def _parse_and_run_batch(args: list[str]) -> int:
-    parser = argparse.ArgumentParser(
-        prog="drumsep batch",
-        description="Process a folder of drum stems",
-    )
-    parser.add_argument("input_dir", help="Directory containing drum audio files")
-    parser.add_argument("-o", "--output", default="./batch_output", help="Output directory")
-    parser.add_argument("--bass", help="Bass stem path for kick debleeding")
-    parser.add_argument("--no-enhanced", action="store_true", help="Disable enhancements")
-
-    # Remove the "batch" token from args before parsing
-    filtered = [a for i, a in enumerate(args) if not (a == "batch" and i == _first_positional_index(args))]
-    parsed = parser.parse_args(filtered)
-    return _cmd_batch(parsed)
-
-
-def _first_positional_index(args: list[str]) -> int:
-    """Return the index of the first non-flag argument."""
-    for i, a in enumerate(args):
-        if not a.startswith("-"):
-            return i
-    return -1
-
-
-def _cmd_separate(args) -> int:
+def _cmd_separate(args: argparse.Namespace) -> int:
     from drumsep import separate
 
-    def on_progress(pct, msg):
+    def on_progress(pct: int, msg: str) -> None:
         if not args.quiet:
             print(f"\r[{pct:3d}%] {msg}", end="", flush=True)
 
@@ -117,7 +111,7 @@ def _cmd_separate(args) -> int:
         return 1
 
 
-def _cmd_analyze(args) -> int:
+def _cmd_analyze(args: argparse.Namespace) -> int:
     from drumsep import analyze_kick
 
     try:
@@ -129,7 +123,7 @@ def _cmd_analyze(args) -> int:
         return 1
 
 
-def _cmd_batch(args) -> int:
+def _cmd_batch(args: argparse.Namespace) -> int:
     from drumsep import separate
 
     input_dir = Path(args.input_dir)

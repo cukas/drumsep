@@ -12,7 +12,9 @@ Usage:
 """
 from __future__ import annotations
 
-from typing import Optional, Callable
+from typing import Any, Optional, Callable
+
+import numpy as np
 
 from .types import SeparationResult, KickAnalysis, DrumSepError, CancellationError
 from .separator import DrumSeparator
@@ -55,6 +57,11 @@ def analyze_kick(audio_path: str) -> KickAnalysis:
     return analyzer.analyze_kick(audio_path)
 
 
-def debleed_kick(kick_audio, bass_stem_path: str, sr: int, **kwargs):
+def debleed_kick(
+    kick_audio: np.ndarray,
+    bass_stem_path: str,
+    sr: int | float,
+    **kwargs: Any,
+) -> np.ndarray:
     """Remove bass bleed from kick audio."""
     return _debleed_kick(kick_audio, bass_stem_path, sr, **kwargs)

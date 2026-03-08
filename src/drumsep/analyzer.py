@@ -30,7 +30,7 @@ class DrumAnalyzer:
             onsets_per_second=round(onsets_per_second, 2),
         )
 
-    def _detect_fundamental(self, y, sr):
+    def _detect_fundamental(self, y: np.ndarray, sr: int | float) -> float:
         S = np.abs(librosa.stft(y, n_fft=4096))
         freqs = librosa.fft_frequencies(sr=sr, n_fft=4096)
         mask = (freqs >= 20) & (freqs <= 100)
@@ -43,7 +43,7 @@ class DrumAnalyzer:
         peak_idx = low_freq_spectrum.argmax()
         return float(freqs[mask][peak_idx])
 
-    def _measure_sub_bass_energy(self, y, sr):
+    def _measure_sub_bass_energy(self, y: np.ndarray, sr: int | float) -> float:
         S = np.abs(librosa.stft(y, n_fft=4096))
         freqs = librosa.fft_frequencies(sr=sr, n_fft=4096)
         mask = (freqs >= 20) & (freqs <= 80)
@@ -56,7 +56,7 @@ class DrumAnalyzer:
         energy_db = librosa.amplitude_to_db(np.array([sub_bass_magnitude]))[0]
         return float(energy_db)
 
-    def _measure_envelope(self, y, sr):
+    def _measure_envelope(self, y: np.ndarray, sr: int | float) -> tuple[float, float]:
         hop_length = 64
         rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
         if len(rms) == 0:
@@ -83,7 +83,7 @@ class DrumAnalyzer:
         decay_ms = (decay_samples / sr) * 1000
         return (float(attack_ms), float(decay_ms))
 
-    def _measure_transient_ratio(self, y, sr):
+    def _measure_transient_ratio(self, y: np.ndarray, sr: int | float) -> float:
         S = np.abs(librosa.stft(y))
         flux = np.diff(S, axis=1)
         transient_energy = np.sum(flux[flux > 0])
@@ -92,7 +92,7 @@ class DrumAnalyzer:
             return float(min(transient_energy / total_energy, 1.0))
         return 0.0
 
-    def _detect_kick_rate(self, y, sr):
+    def _detect_kick_rate(self, y: np.ndarray, sr: int | float) -> float:
         onset_env = librosa.onset.onset_strength(y=y, sr=sr)
         onsets = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)
         duration = len(y) / sr

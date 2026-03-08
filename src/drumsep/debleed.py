@@ -13,7 +13,7 @@ import librosa
 def debleed_kick(
     kick_audio: np.ndarray,
     bass_stem_path: str,
-    sr: int,
+    sr: int | float,
     n_fft: int = 4096,
     hop_length: int = 512,
     low_hz: float = 20.0,

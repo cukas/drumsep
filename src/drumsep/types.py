@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Dict, Any
+from typing import Any
 
 
 @dataclass
 class SeparationResult:
     """Result of drum stem separation."""
-    stems: Dict[str, str]
+    stems: dict[str, str]
     model_name: str
     processing_time: float
 
@@ -24,7 +24,7 @@ class KickAnalysis:
     spectral_centroid: float
     onsets_per_second: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 

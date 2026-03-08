@@ -1,14 +1,37 @@
 # drumsep
 
-Separate drums into kick, snare, hi-hat, cymbals, and toms — no ML models required.
+[![CI](https://github.com/cukas/drumsep/actions/workflows/ci.yml/badge.svg)](https://github.com/cukas/drumsep/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/drumsep.svg)](https://pypi.org/project/drumsep/)
+
+Separate drums into kick, snare, hi-hat, cymbals, and toms — **no ML models required**.
 
 Uses frequency analysis with HPSS, transient detection, and spectral gating. Pure Python, runs on CPU, works offline.
+
+## Why No ML?
+
+Most drum separation tools (Demucs, HTDemucs) rely on large neural networks that need GPUs, model downloads, and heavy dependencies. drumsep takes a different approach:
+
+| | drumsep | ML-based (Demucs etc.) |
+|---|---|---|
+| **Dependencies** | 3 (numpy, librosa, soundfile) | 10+ (torch, torchaudio, ...) |
+| **Install size** | ~50 MB | ~2 GB+ |
+| **GPU required** | No | Recommended |
+| **Model download** | None | 80-300 MB per model |
+| **Startup time** | <100ms | 2-10s (model loading) |
+| **Deterministic** | Yes | Yes |
+| **Best for** | Pre-isolated drum stems | Full mix separation |
+
+drumsep is designed for a specific use case: splitting an **already-isolated drums stem** into its sub-components. If you need to separate drums from a full mix, use Demucs first, then pipe the drums stem through drumsep.
 
 ## Install
 
 ```bash
 pip install drumsep
 ```
+
+Requires `libsndfile` system library (`brew install libsndfile` on macOS, `apt install libsndfile1` on Ubuntu).
 
 ## Quick Start
 
@@ -46,25 +69,62 @@ drumsep analyze kick.wav
 drumsep batch ./drum_folder/ -o ./output/
 ```
 
+See [`notebooks/drumsep_demo.ipynb`](notebooks/drumsep_demo.ipynb) for an interactive walkthrough with spectrogram visualizations.
+
 ## How It Works
 
-1. **HPSS pre-processing** — Harmonic-Percussive Source Separation isolates transients from sustained content
-2. **Dual STFT** — Percussive component for kick/snare/toms, full signal for hihat/cymbals (preserves harmonic shimmer)
-3. **Frequency masking** — Soft masks with 20Hz transition roll-offs target each instrument's range
-4. **Transient-aware kick detection** — Onset envelope + spectral flux gate passes full energy during hits, attenuates bass bleed between hits
-5. **Spectral gate** — Attack/release envelope on kick (3-frame attack, 8-frame exponential decay)
-6. **Cross-stem debleed** — Optional Wiener-filter soft masking removes bass content from kick using cosine similarity
-7. **Stereo restoration** — Correlation-based L/R gain recovery from original stereo image
+```
+drums.wav
+    │
+    ▼
+┌──────────┐
+│   HPSS   │──── Harmonic-Percussive Source Separation
+└────┬─────┘
+     │
+     ├─── percussive ──► Dual STFT (4096-point FFT)
+     │                       │
+     │                  ┌────┴────────────────────┐
+     │                  │   Frequency Masking      │
+     │                  │   (soft 20Hz roll-offs)  │
+     │                  └────┬────────────────────-┘
+     │                       │
+     │               ┌──────┼──────┬──────┐
+     │               ▼      ▼      ▼      ▼
+     │             kick   snare   toms   (full signal)
+     │              │                      │
+     │         transient              ┌────┴────┐
+     │          gate +                ▼         ▼
+     │         spectral             hihat    cymbals
+     │          gate          (onset-weighted)  │
+     │              │                      subtract
+     │              ▼                      hihat
+     │         [optional]
+     │         debleed vs
+     │         bass stem
+     │
+     └─── original stereo ──► correlation-based L/R gain recovery
+                                        │
+                                        ▼
+                               5 stereo WAV files
+```
+
+1. **HPSS pre-processing** — isolates transients from sustained content
+2. **Dual STFT** — percussive component for kick/snare/toms, full signal for hihat/cymbals (preserves harmonic shimmer)
+3. **Frequency masking** — soft masks with 20Hz transition roll-offs target each instrument's range
+4. **Transient-aware kick detection** — onset envelope + spectral flux gate passes full energy during hits, attenuates bass bleed between hits
+5. **Spectral gate** — attack/release envelope on kick (3-frame attack, 8-frame exponential decay)
+6. **Cross-stem debleed** — optional Wiener-filter soft masking removes bass content from kick using cosine similarity
+7. **Stereo restoration** — correlation-based L/R gain recovery from original stereo image
 
 ## Sub-stems
 
-| Stem | Range | Description |
-|------|-------|-------------|
-| kick | 20-100Hz | Low-frequency transients with transient gate |
-| snare | 150-300Hz + 2-4kHz | Body + crack (dual-band) |
-| hihat | 6-12kHz | High-frequency transient bursts |
-| cymbals | 3-16kHz | Crashes/rides (hihat-subtracted) |
-| toms | 80-400Hz | Mid-frequency transients (kick/snare-subtracted) |
+| Stem | Range | Source | Description |
+|------|-------|--------|-------------|
+| kick | 20-100Hz | Percussive STFT | Low-frequency transients with transient + spectral gate |
+| snare | 150-300Hz + 2-4kHz | Percussive STFT | Body + crack (dual-band) |
+| hihat | 6-12kHz | Full STFT | High-frequency transient bursts, onset-weighted |
+| cymbals | 3-16kHz | Full STFT | Crashes/rides (hihat-subtracted) |
+| toms | 80-400Hz | Percussive STFT | Mid-frequency transients (kick/snare-subtracted) |
 
 ## API Reference
 
@@ -72,20 +132,26 @@ drumsep batch ./drum_folder/ -o ./output/
 
 Separate drums audio into 5 sub-stems. Returns `SeparationResult` with `.stems` dict and `.processing_time`.
 
+- `drums_path` — path to input drums WAV/FLAC/MP3
+- `output_dir` — directory for output stems (created if needed)
+- `bass_path` — optional bass stem for kick debleeding
+- `enhanced` — enable HPSS + transient detection (default: `True`)
+- `on_progress` — callback `(percent: int, message: str) -> None`, percent ranges 0-100
+
 ### `analyze_kick(audio_path)`
 
 Analyze kick drum audio. Returns `KickAnalysis` with:
-- `fundamental_freq` — Dominant frequency in Hz
-- `sub_bass_energy` — Energy in 20-80Hz band (dB)
-- `attack_timing_ms` — Onset to peak time
-- `decay_time_ms` — Peak to 50% energy time
-- `transient_ratio` — Attack vs total energy (0-1)
-- `spectral_centroid` — Brightness (Hz)
-- `onsets_per_second` — Kick rate
+- `fundamental_freq` — dominant frequency in Hz
+- `sub_bass_energy` — energy in 20-80Hz band (dB)
+- `attack_timing_ms` — onset to peak time
+- `decay_time_ms` — peak to 50% energy time
+- `transient_ratio` — attack vs total energy (0-1)
+- `spectral_centroid` — brightness (Hz)
+- `onsets_per_second` — kick rate
 
 ### `DrumSeparator(enhanced=True, cancel_event=None)`
 
-Low-level class for separation with cancellation support.
+Low-level class for separation with threading cancellation support via `threading.Event`.
 
 ### `DrumAnalyzer()`
 
@@ -95,23 +161,46 @@ Low-level class for drum analysis.
 
 Remove bass bleed from kick audio array using Wiener-filter soft masking.
 
+## Known Limitations
+
+- **Designed for pre-isolated drum stems** — not a full-mix separator. Use Demucs/HTDemucs first if you need to extract drums from a full mix.
+- **Stereo restoration is approximate** — uses correlation-based L/R gain split, not true panning/phase reconstruction. Works well for center-panned drums, less so for hard-panned elements.
+- **Frequency overlap** — some bleed between adjacent stems is expected (e.g., low toms into kick range). The `enhanced` mode and debleed feature help minimize this.
+- **Optimized for rock/pop/electronic drums** — acoustic jazz kits with heavy cymbal wash may produce less clean separation.
+
 ## Requirements
 
 - Python 3.10+
-- numpy
-- librosa
-- soundfile
+- numpy, librosa, soundfile
+- System: `libsndfile`
 
 No GPU required. No model downloads.
 
 ## Development
 
 ```bash
-git clone https://github.com/nicklascukas/drumsep.git
+git clone https://github.com/cukas/drumsep.git
 cd drumsep
 pip install -e ".[dev]"
-pytest
+make check   # lint + typecheck + test with coverage
 ```
+
+Or run individually:
+
+```bash
+make test       # pytest with coverage
+make lint       # ruff
+make typecheck  # mypy
+```
+
+## Contributing
+
+Contributions are welcome. Please:
+
+1. Fork the repo and create a feature branch
+2. Add tests for new functionality
+3. Run `make check` before submitting a PR
+4. Keep PRs focused — one feature or fix per PR
 
 ## License
 
