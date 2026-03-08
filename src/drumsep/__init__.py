@@ -19,7 +19,11 @@ from .separator import DrumSeparator
 from .analyzer import DrumAnalyzer
 from .debleed import debleed_kick as _debleed_kick
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version as _version
+    __version__ = _version("drumsep")
+except Exception:
+    __version__ = "0.1.0"
 __all__ = [
     "separate",
     "analyze_kick",

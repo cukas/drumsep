@@ -32,5 +32,5 @@ class DrumSepError(Exception):
     pass
 
 
-class CancellationError(Exception):
+class CancellationError(DrumSepError):
     pass

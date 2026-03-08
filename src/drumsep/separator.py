@@ -15,10 +15,12 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-import time
-import sys
 import gc
 import threading
+import time
+import warnings
+
+
 
 import numpy as np
 import librosa
@@ -138,18 +140,20 @@ class DrumSeparator:
             self._check_cancelled()
             self._progress(on_progress, 55, "Synthesizing drum sub-stems...")
 
+            stft_data = complex_stfts  # local ref for closure
+
             def _istft(name: str) -> tuple:
-                return (name, librosa.istft(complex_stfts[name], hop_length=512))
+                return (name, librosa.istft(stft_data[name], hop_length=512))
 
             audio_results: Dict[str, np.ndarray] = {}
             try:
                 with ThreadPoolExecutor(max_workers=5) as pool:
                     for name, audio in pool.map(_istft, self.STEMS):
                         audio_results[name] = audio
-            except (MemoryError, Exception) as e:
-                print(
-                    f"[WARNING] Parallel ISTFT failed ({e}), falling back to sequential",
-                    file=sys.stderr,
+            except Exception as e:
+                warnings.warn(
+                    f"Parallel ISTFT failed ({e}), falling back to sequential",
+                    stacklevel=2,
                 )
                 audio_results.clear()
                 for name in self.STEMS:
@@ -168,7 +172,7 @@ class DrumSeparator:
                         audio_results["kick"], bass_path, sr
                     )
                 except Exception as e:
-                    print(f"[WARNING] Kick debleed failed: {e}", file=sys.stderr)
+                    warnings.warn(f"Kick debleed failed: {e}", stacklevel=2)
 
             self._check_cancelled()
             self._progress(on_progress, 90, "Saving drum sub-stems...")

@@ -15,7 +15,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # Handle --version before anything else
     if "--version" in args:
-        print("drumsep 0.1.0")
+        from drumsep import __version__
+        print(f"drumsep {__version__}")
         return 0
 
     # Detect if first positional arg is a known subcommand

@@ -1,7 +1,6 @@
 # tests/test_separator.py
 """Tests for DrumSeparator."""
 import os
-from pathlib import Path
 
 from drumsep.separator import DrumSeparator
 from drumsep.types import SeparationResult

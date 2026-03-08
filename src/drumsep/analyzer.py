@@ -44,19 +44,17 @@ class DrumAnalyzer:
         return float(freqs[mask][peak_idx])
 
     def _measure_sub_bass_energy(self, y, sr):
-        from scipy.signal import butter, sosfilt
-        nyq = sr / 2
-        high = min(80 / nyq, 0.99)
-        low = 20 / nyq
-        if low >= high or low <= 0:
+        S = np.abs(librosa.stft(y, n_fft=4096))
+        freqs = librosa.fft_frequencies(sr=sr, n_fft=4096)
+        mask = (freqs >= 20) & (freqs <= 80)
+        masked_spectrum = S[mask]
+        if masked_spectrum.size == 0:
             return -60.0
-        sos = butter(4, [low, high], btype="band", output="sos")
-        filtered = sosfilt(sos, y)
-        rms = np.sqrt(np.mean(filtered ** 2))
-        if rms == 0:
+        sub_bass_magnitude = masked_spectrum.mean()
+        if sub_bass_magnitude == 0:
             return -60.0
-        db = 20.0 * np.log10(rms)
-        return float(db)
+        energy_db = librosa.amplitude_to_db(np.array([sub_bass_magnitude]))[0]
+        return float(energy_db)
 
     def _measure_envelope(self, y, sr):
         hop_length = 64
