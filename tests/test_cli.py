@@ -44,7 +44,7 @@ def test_cli_no_args():
 def test_cli_version():
     result = _run_cli("--version")
     assert result.returncode == 0
-    assert "0.1.0" in result.stdout
+    assert "1.0.0" in result.stdout
 
 
 def test_cli_batch(drums_audio_path, tmp_path):
